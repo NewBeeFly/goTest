@@ -179,7 +179,7 @@ jobs:
             done
             sleep 1
 
-            nohup "$DEPLOY_DIR/app" > "$DEPLOY_DIR/app.log" 2>&1 &
+            nohup bash -c "cd '$DEPLOY_DIR' && exec ./app" > "$DEPLOY_DIR/app.log" 2>&1 &
             disown $!
             sleep 3
 
