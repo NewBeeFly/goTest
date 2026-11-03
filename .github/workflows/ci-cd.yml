@@ -111,6 +111,14 @@ jobs:
           done
           exit "$missing"
 
+      # TEMP DIAGNOSTIC: server-side truth, evaluated before the runner starts.
+      - name: Server-side secret presence
+        run: |
+          echo "TENCENT_HOST is empty     : ${{ secrets.TENCENT_HOST == '' }}"
+          echo "TENCENT_USERNAME is empty : ${{ secrets.TENCENT_USERNAME == '' }}"
+          echo "TENCENT_PASSWORD is empty : ${{ secrets.TENCENT_PASSWORD == '' }}"
+          echo "TENCENT_PORT is empty     : ${{ secrets.TENCENT_PORT == '' }}"
+
       - name: Deploy to Tencent Cloud via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
