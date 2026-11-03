@@ -111,41 +111,7 @@ jobs:
           done
           exit "$missing"
 
-      - name: Download compiled binary
-        uses: actions/download-artifact@v4
-        with:
-          name: go-app
-
-      - name: Prepare directory on server
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.TENCENT_HOST }}
-          username: ${{ secrets.TENCENT_USERNAME }}
-          password: ${{ secrets.TENCENT_PASSWORD }}
-          port: ${{ secrets.TENCENT_PORT }}
-          script: |
-            sudo mkdir -p /opt/goTest
-            sudo chown "$USER:$USER" /opt/goTest
-
-      - name: Upload binary via SCP
-        env:
-          SSHPASS: ${{ secrets.TENCENT_PASSWORD }}
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
-          sshpass -e scp \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            -P "${{ secrets.TENCENT_PORT }}" \
-            ./app \
-            "${{ secrets.TENCENT_USERNAME }}@${{ secrets.TENCENT_HOST }}:/opt/goTest/app"
-          sshpass -e ssh \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            -p "${{ secrets.TENCENT_PORT }}" \
-            "${{ secrets.TENCENT_USERNAME }}@${{ secrets.TENCENT_HOST }}" \
-            "chmod 755 /opt/goTest/app"
-
-      - name: Restart app on server
+      - name: Deploy to Tencent Cloud via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.TENCENT_HOST }}
@@ -154,11 +120,55 @@ jobs:
           port: ${{ secrets.TENCENT_PORT }}
           script: |
             set -e
-            DEPLOY_DIR="/opt/goTest"
 
-            echo "=== Stop old process ==="
+            DEPLOY_DIR="/opt/goTest"
+            REPO_URL="https://github.com/NewBeeFly/goTest.git"
+            SSH_USER="${{ secrets.TENCENT_USERNAME }}"
+
+            echo "=== Go toolchain ==="
+            GO_BIN="$(command -v go)"
+            if [ -z "$GO_BIN" ]; then
+              echo "::error::Go is not installed on this server"
+              exit 1
+            fi
+            "$GO_BIN" version
+
+            echo "=== Prepare directory ==="
+            sudo mkdir -p "$DEPLOY_DIR"
+            current_owner="$(stat -c '%U' "$DEPLOY_DIR")"
+            if [ "$current_owner" != "$SSH_USER" ]; then
+              sudo chown "$SSH_USER:$SSH_USER" "$DEPLOY_DIR"
+            fi
+
+            echo "=== Git pull ==="
+            if [ -d "$DEPLOY_DIR/.git" ]; then
+              git -C "$DEPLOY_DIR" checkout main
+              pull_ok=0
+              for attempt in 1 2 3; do
+                echo "git pull attempt $attempt/3..."
+                if git -C "$DEPLOY_DIR" pull origin main; then
+                  pull_ok=1
+                  break
+                fi
+                echo "git pull attempt $attempt failed, retrying in 5s..."
+                sleep 5
+              done
+              if [ "$pull_ok" -ne 1 ]; then
+                echo "::error::git pull failed after 3 attempts"
+                exit 1
+              fi
+            else
+              sudo rm -rf "${DEPLOY_DIR:?}"/*
+              git clone "$REPO_URL" "$DEPLOY_DIR"
+            fi
+
+            cd "$DEPLOY_DIR"
+
+            echo "=== Build ==="
+            "$GO_BIN" build -o app .
+
+            echo "=== Restart ==="
             pkill -f "$DEPLOY_DIR/app" 2>/dev/null || true
-            # Wait for port 8080 to be free (old process actually dead).
             for i in 1 2 3 4 5; do
               if ! curl -sf http://localhost:8080/health >/dev/null 2>&1; then
                 echo "Old process stopped after $((i-1)) retries"
@@ -169,13 +179,10 @@ jobs:
             done
             sleep 1
 
-            echo "=== Start new process ==="
             nohup "$DEPLOY_DIR/app" > "$DEPLOY_DIR/app.log" 2>&1 &
             disown $!
             sleep 3
 
-            echo "=== Status ==="
-            ps aux | grep "$DEPLOY_DIR/app" | grep -v grep || echo "(process not listed yet — checking log)"
             echo "=== Last 20 log lines ==="
             tail -20 "$DEPLOY_DIR/app.log" 2>/dev/null || echo "(log not yet available)"
 
