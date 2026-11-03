@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -10,11 +11,13 @@ func TestHelloHandler(t *testing.T) {
 	tests := []struct {
 		name         string
 		queryParam   string
-		expectedBody string
+		expectStatus int
+		expectBody   string
 	}{
-		{"default greeting", "", "Hello, World!\n"},
-		{"named greeting", "?name=Go", "Hello, Go!\n"},
-		{"empty name falls back", "?name=", "Hello, World!\n"},
+		{"default greeting", "", http.StatusOK, "Hello, World!"},
+		{"named greeting", "?name=Go", http.StatusOK, "Hello, Go!"},
+		{"empty name falls back", "?name=", http.StatusOK, "Hello, World!"},
+		{"xss escaped", "?name=<script>", http.StatusOK, "Hello, &lt;script&gt;!"},
 	}
 
 	for _, tc := range tests {
@@ -24,14 +27,25 @@ func TestHelloHandler(t *testing.T) {
 
 			helloHandler(rec, req)
 
-			if rec.Code != http.StatusOK {
-				t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+			if rec.Code != tc.expectStatus {
+				t.Errorf("expected status %d, got %d", tc.expectStatus, rec.Code)
 			}
-			if rec.Body.String() != tc.expectedBody {
-				t.Errorf("expected %q, got %q", tc.expectedBody, rec.Body.String())
+			body := rec.Body.String()
+			if !strings.Contains(body, tc.expectBody) {
+				t.Errorf("expected body to contain %q, got %q", tc.expectBody, body)
+			}
+			if !strings.Contains(body, "<!DOCTYPE html>") {
+				t.Errorf("expected HTML response, got %q", body[:min(len(body), 200)])
 			}
 		})
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func TestHealthHandler(t *testing.T) {
