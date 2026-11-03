@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/NewBeeFly/goTest:latest
+    image: ghcr.io/newbeefly/gotest:latest
     container_name: goTest-app
     restart: always
     ports:
