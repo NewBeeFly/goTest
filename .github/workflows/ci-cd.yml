@@ -97,22 +97,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # TEMP DIAGNOSTIC: server-side truth, evaluated before the runner starts.
-      - name: Server-side secret presence
-        run: |
-          echo "TENCENT_HOST is empty     : ${{ secrets.TENCENT_HOST == '' }}"
-          echo "TENCENT_USERNAME is empty : ${{ secrets.TENCENT_USERNAME == '' }}"
-          echo "TENCENT_PASSWORD is empty : ${{ secrets.TENCENT_PASSWORD == '' }}"
-          echo "TENCENT_PORT is empty     : ${{ secrets.TENCENT_PORT == '' }}"
-
+      # Secrets are not injected as environment variables automatically — they
+      # only live in the `secrets` context, so map them explicitly to read them
+      # from a shell script. Without this the check below can never pass.
       - name: Validate required secrets
+        env:
+          TENCENT_HOST: ${{ secrets.TENCENT_HOST }}
+          TENCENT_USERNAME: ${{ secrets.TENCENT_USERNAME }}
+          TENCENT_PASSWORD: ${{ secrets.TENCENT_PASSWORD }}
+          TENCENT_PORT: ${{ secrets.TENCENT_PORT }}
         run: |
           missing=0
           for name in TENCENT_HOST TENCENT_USERNAME TENCENT_PASSWORD TENCENT_PORT; do
-            val="${!name}"
-            # TEMP DIAGNOSTIC: distinguish "env var never arrived" from "secret is empty".
-            echo "$name: present=$([ -v "$name" ] && echo yes || echo no) length=${#val}"
-            if [ -z "$val" ]; then
+            if [ -z "${!name}" ]; then
               echo "::error::$name is unset or empty — add it in Settings → Secrets and variables → Actions"
               missing=1
             fi
