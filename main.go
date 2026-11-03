@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"html"
 	"net/http"
 	"os"
