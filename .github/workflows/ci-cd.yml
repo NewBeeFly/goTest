@@ -144,8 +144,19 @@ jobs:
             echo "=== Git pull ==="
             if [ -d "$DEPLOY_DIR/.git" ]; then
               git -C "$DEPLOY_DIR" checkout main
-              if ! git -C "$DEPLOY_DIR" pull origin main; then
-                echo "::error::git pull failed"
+              pull_ok=0
+              for attempt in 1 2 3; do
+                echo "git pull attempt $attempt/3..."
+                if git -C "$DEPLOY_DIR" pull origin main; then
+                  pull_ok=1
+                  break
+                fi
+                echo "git pull attempt $attempt failed, retrying in 5s..."
+                sleep 5
+              done
+              if [ "$pull_ok" -ne 1 ]; then
+                echo "::error::git pull failed after 3 attempts — network to github.com is unreliable."
+                echo "::error::Fix outbound network or deploy the binary via scp instead."
                 exit 1
               fi
             else
