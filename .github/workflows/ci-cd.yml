@@ -70,13 +70,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # GHCR requires an all-lowercase repository name, but this repo is
+      # "NewBeeFly/goTest" — lowercase owner and repo before building the tag.
+      - name: Compute lowercase image tag
+        run: echo "IMAGE=ghcr.io/${REPO,,}" >> "$GITHUB_ENV"
+        env:
+          REPO: ${{ github.repository }}
+
       - name: Build and push Docker image
         id: build-push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/goTest:latest
+          tags: ${{ env.IMAGE }}
 
       - name: Export image digest
         run: echo "IMAGE_DIGEST=${{ steps.build-push.outputs.digest }}" >> $GITHUB_ENV
