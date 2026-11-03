@@ -145,18 +145,18 @@ jobs:
             if [ -d "$DEPLOY_DIR/.git" ]; then
               git -C "$DEPLOY_DIR" checkout main
               if ! git -C "$DEPLOY_DIR" pull origin main; then
-                echo "::error::git pull failed — this server cannot reach github.com:443."
-                echo "::error::Fix outbound network or deploy the binary via scp instead."
+                echo "::error::git pull failed"
                 exit 1
               fi
             else
-              # Clean up any leftover non-git files from a previous failed run.
               sudo rm -rf "${DEPLOY_DIR:?}"/*
               git clone "$REPO_URL" "$DEPLOY_DIR"
             fi
 
+            cd "$DEPLOY_DIR"
+
             echo "=== Build ==="
-            "$GO_BIN" build -o "$DEPLOY_DIR/app" "$DEPLOY_DIR"
+            "$GO_BIN" build -o app .
 
             echo "=== Restart ==="
             pkill -f "$DEPLOY_DIR/app" 2>/dev/null || true
