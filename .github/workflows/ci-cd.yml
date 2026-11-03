@@ -153,8 +153,19 @@ jobs:
             sleep 1
             nohup "$DEPLOY_DIR/app" > app.log 2>&1 &
             disown $!
-            sleep 2
+            sleep 3
+
             echo "=== Status ==="
-            ps aux | grep "$DEPLOY_DIR/app" | grep -v grep
+            ps aux | grep "$DEPLOY_DIR/app" | grep -v grep || echo "(process not listed yet — checking log)"
             echo "=== Last 20 log lines ==="
-            tail -20 app.log
+            tail -20 app.log 2>/dev/null || echo "(log not yet available)"
+
+            echo "=== Health check ==="
+            for i in 1 2 3 4 5; do
+              if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
+                echo "Health check passed on attempt $i"
+                break
+              fi
+              echo "Health check attempt $i failed, retrying in 2s..."
+              sleep 2
+            done
