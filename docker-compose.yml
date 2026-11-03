@@ -1,0 +1,7 @@
+services:
+  app:
+    image: ghcr.io/NewBeeFly/goTest:latest
+    container_name: goTest-app
+    restart: always
+    ports:
+      - "8080:8080"
