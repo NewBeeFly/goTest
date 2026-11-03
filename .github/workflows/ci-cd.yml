@@ -123,6 +123,7 @@ jobs:
 
             DEPLOY_DIR="/opt/goTest"
             REPO_URL="https://github.com/NewBeeFly/goTest.git"
+            SSH_USER="${{ secrets.TENCENT_USERNAME }}"
 
             echo "=== Go toolchain ==="
             GO_BIN="$(command -v go)"
@@ -133,36 +134,41 @@ jobs:
             "$GO_BIN" version
 
             echo "=== Prepare directory ==="
-            if [ ! -d "$DEPLOY_DIR/.git" ]; then
-              sudo mkdir -p "$DEPLOY_DIR"
-              sudo chown "$USER:$USER" "$DEPLOY_DIR"
+            sudo mkdir -p "$DEPLOY_DIR"
+            # Ensure the SSH user owns the directory so git can write into it.
+            current_owner="$(stat -c '%U' "$DEPLOY_DIR")"
+            if [ "$current_owner" != "$SSH_USER" ]; then
+              sudo chown "$SSH_USER:$SSH_USER" "$DEPLOY_DIR"
+            fi
+
+            echo "=== Git pull ==="
+            if [ -d "$DEPLOY_DIR/.git" ]; then
+              git -C "$DEPLOY_DIR" checkout main
+              if ! git -C "$DEPLOY_DIR" pull origin main; then
+                echo "::error::git pull failed — this server cannot reach github.com:443."
+                echo "::error::Fix outbound network or deploy the binary via scp instead."
+                exit 1
+              fi
+            else
+              # Clean up any leftover non-git files from a previous failed run.
+              sudo rm -rf "${DEPLOY_DIR:?}"/*
               git clone "$REPO_URL" "$DEPLOY_DIR"
             fi
 
-            cd "$DEPLOY_DIR"
-            git checkout main
-
-            echo "=== Git pull ==="
-            if ! git pull origin main; then
-              echo "::error::git pull failed — this server cannot reach github.com:443."
-              echo "::error::Options: (1) fix outbound network, or (2) deploy the binary via scp instead."
-              exit 1
-            fi
-
             echo "=== Build ==="
-            "$GO_BIN" build -o app .
+            "$GO_BIN" build -o "$DEPLOY_DIR/app" "$DEPLOY_DIR"
 
             echo "=== Restart ==="
             pkill -f "$DEPLOY_DIR/app" 2>/dev/null || true
             sleep 1
-            nohup "$DEPLOY_DIR/app" > app.log 2>&1 &
+            nohup "$DEPLOY_DIR/app" > "$DEPLOY_DIR/app.log" 2>&1 &
             disown $!
             sleep 2
 
             echo "=== Status ==="
             ps aux | grep "$DEPLOY_DIR/app" | grep -v grep || echo "(process not listed yet — checking log)"
             echo "=== Last 20 log lines ==="
-            tail -20 app.log 2>/dev/null || echo "(log not yet available)"
+            tail -20 "$DEPLOY_DIR/app.log" 2>/dev/null || echo "(log not yet available)"
 
             echo "=== Health check ==="
             for i in 1 2 3 4 5; do
