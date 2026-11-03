@@ -99,10 +99,15 @@ jobs:
 
       - name: Validate required secrets
         run: |
-          : "${TENCENT_HOST:?Missing TENCENT_HOST secret}"
-          : "${TENCENT_USERNAME:?Missing TENCENT_USERNAME secret}"
-          : "${TENCENT_PASSWORD:?Missing TENCENT_PASSWORD secret}"
-          : "${TENCENT_PORT:?Missing TENCENT_PORT secret}"
+          missing=0
+          for name in TENCENT_HOST TENCENT_USERNAME TENCENT_PASSWORD TENCENT_PORT; do
+            # ${!name} indirect expansion; length only, never the value itself.
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is unset or empty — add it in Settings → Secrets and variables → Actions"
+              missing=1
+            fi
+          done
+          exit "$missing"
 
       - name: Deploy to Tencent Cloud via SSH
         uses: appleboy/ssh-action@v1.2.0
