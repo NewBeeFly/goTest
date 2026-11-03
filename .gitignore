@@ -1,3 +1,45 @@
+# Build output
 app
+app.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test / coverage
+*.test
+*.out
+coverage.*
+
+# Installer archives (never commit these — see commit 6b6fe2f)
+*.zip
+*.msi
+*.pkg
+*.dmg
+*.tar.gz
+
+# Logs
+*.log
+logs/
+
+# Editor / IDE
 .idea
 .vscode
+*.swp
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Go workspace
+go.work
+go.work.sum
+
+# MCP / tooling artifacts
+.playwright-mcp/
+.cache/
