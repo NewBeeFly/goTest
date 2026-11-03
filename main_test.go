@@ -14,7 +14,7 @@ func TestHelloHandler(t *testing.T) {
 	}{
 		{"default greeting", "", "Hello, World!\n"},
 		{"named greeting", "?name=Go", "Hello, Go!\n"},
-		{"empty name falls back", "?name=", "Hello, !\n"},
+		{"empty name falls back", "?name=", "Hello, World!\n"},
 	}
 
 	for _, tc := range tests {
