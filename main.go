@@ -19,7 +19,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              ":" + port,
-		ReadHeaderTimeout:  5 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -44,5 +44,7 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	if _, err := w.Write([]byte("OK")); err != nil {
+		fmt.Fprintf(os.Stderr, "health: write failed: %v\n", err)
+	}
 }
