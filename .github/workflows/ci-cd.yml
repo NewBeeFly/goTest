@@ -94,17 +94,16 @@ jobs:
         run: |
           : "${TENCENT_HOST:?Missing TENCENT_HOST secret}"
           : "${TENCENT_USERNAME:?Missing TENCENT_USERNAME secret}"
-          : "${TENCENT_SSH_KEY:?Missing TENCENT_SSH_KEY secret}"
-          : "${TENCENT_HOST_FINGERPRINT:?Missing TENCENT_HOST_FINGERPRINT secret}"
+          : "${TENCENT_PASSWORD:?Missing TENCENT_PASSWORD secret}"
+          : "${TENCENT_PORT:?Missing TENCENT_PORT secret}"
 
       - name: Deploy to Tencent Cloud via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.TENCENT_HOST }}
           username: ${{ secrets.TENCENT_USERNAME }}
-          key: ${{ secrets.TENCENT_SSH_KEY }}
+          password: ${{ secrets.TENCENT_PASSWORD }}
           port: ${{ secrets.TENCENT_PORT }}
-          fingerprint: ${{ secrets.TENCENT_HOST_FINGERPRINT }}
           script: |
             cd /opt/goTest
             docker compose pull
