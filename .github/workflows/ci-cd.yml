@@ -111,7 +111,41 @@ jobs:
           done
           exit "$missing"
 
-      - name: Deploy to Tencent Cloud via SSH
+      - name: Download compiled binary
+        uses: actions/download-artifact@v4
+        with:
+          name: go-app
+
+      - name: Prepare directory on server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.TENCENT_HOST }}
+          username: ${{ secrets.TENCENT_USERNAME }}
+          password: ${{ secrets.TENCENT_PASSWORD }}
+          port: ${{ secrets.TENCENT_PORT }}
+          script: |
+            sudo mkdir -p /opt/goTest
+            sudo chown "$USER:$USER" /opt/goTest
+
+      - name: Upload binary via SCP
+        env:
+          SSHPASS: ${{ secrets.TENCENT_PASSWORD }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          sshpass -e scp \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -P "${{ secrets.TENCENT_PORT }}" \
+            ./app \
+            "${{ secrets.TENCENT_USERNAME }}@${{ secrets.TENCENT_HOST }}:/opt/goTest/app"
+          sshpass -e ssh \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -p "${{ secrets.TENCENT_PORT }}" \
+            "${{ secrets.TENCENT_USERNAME }}@${{ secrets.TENCENT_HOST }}" \
+            "chmod 755 /opt/goTest/app"
+
+      - name: Restart app on server
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.TENCENT_HOST }}
@@ -120,64 +154,17 @@ jobs:
           port: ${{ secrets.TENCENT_PORT }}
           script: |
             set -e
-
             DEPLOY_DIR="/opt/goTest"
-            REPO_URL="https://github.com/NewBeeFly/goTest.git"
-            SSH_USER="${{ secrets.TENCENT_USERNAME }}"
 
-            echo "=== Go toolchain ==="
-            GO_BIN="$(command -v go)"
-            if [ -z "$GO_BIN" ]; then
-              echo "::error::Go is not installed on this server"
-              exit 1
-            fi
-            "$GO_BIN" version
-
-            echo "=== Prepare directory ==="
-            sudo mkdir -p "$DEPLOY_DIR"
-            # Ensure the SSH user owns the directory so git can write into it.
-            current_owner="$(stat -c '%U' "$DEPLOY_DIR")"
-            if [ "$current_owner" != "$SSH_USER" ]; then
-              sudo chown "$SSH_USER:$SSH_USER" "$DEPLOY_DIR"
-            fi
-
-            echo "=== Git pull ==="
-            if [ -d "$DEPLOY_DIR/.git" ]; then
-              git -C "$DEPLOY_DIR" checkout main
-              pull_ok=0
-              for attempt in 1 2 3; do
-                echo "git pull attempt $attempt/3..."
-                if git -C "$DEPLOY_DIR" pull origin main; then
-                  pull_ok=1
-                  break
-                fi
-                echo "git pull attempt $attempt failed, retrying in 5s..."
-                sleep 5
-              done
-              if [ "$pull_ok" -ne 1 ]; then
-                echo "::error::git pull failed after 3 attempts — network to github.com is unreliable."
-                echo "::error::Fix outbound network or deploy the binary via scp instead."
-                exit 1
-              fi
-            else
-              sudo rm -rf "${DEPLOY_DIR:?}"/*
-              git clone "$REPO_URL" "$DEPLOY_DIR"
-            fi
-
-            cd "$DEPLOY_DIR"
-
-            echo "=== Build ==="
-            "$GO_BIN" build -o app .
-
-            echo "=== Restart ==="
+            echo "=== Stop old process ==="
             pkill -f "$DEPLOY_DIR/app" 2>/dev/null || true
-            # Wait for the old process to release port 8080.
+            # Wait for port 8080 to be free (old process actually dead).
             for i in 1 2 3 4 5; do
               if ! curl -sf http://localhost:8080/health >/dev/null 2>&1; then
-                echo "Old process stopped (port 8080 free) after $((i-1)) retries"
+                echo "Old process stopped after $((i-1)) retries"
                 break
               fi
-              echo "Waiting for old process to exit (attempt $i/5)..."
+              echo "Waiting for old process to exit ($i/5)..."
               sleep 1
             done
             sleep 1
