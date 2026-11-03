@@ -95,8 +95,6 @@ jobs:
       contents: read
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
-
       - name: Validate required secrets
         env:
           TENCENT_HOST: ${{ secrets.TENCENT_HOST }}
@@ -113,7 +111,41 @@ jobs:
           done
           exit "$missing"
 
-      - name: Deploy to Tencent Cloud via SSH
+      - name: Download binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: go-app
+
+      - name: Create deploy directory on server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.TENCENT_HOST }}
+          username: ${{ secrets.TENCENT_USERNAME }}
+          password: ${{ secrets.TENCENT_PASSWORD }}
+          port: ${{ secrets.TENCENT_PORT }}
+          script: |
+            sudo mkdir -p /opt/goTest
+            sudo chown $USER:$USER /opt/goTest
+
+      - name: Upload binary to server
+        env:
+          SSHPASS: ${{ secrets.TENCENT_PASSWORD }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          sshpass -e scp \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -P "${{ secrets.TENCENT_PORT }}" \
+            ./app \
+            "${{ secrets.TENCENT_USERNAME }}@${{ secrets.TENCENT_HOST }}:/opt/goTest/app"
+          sshpass -e ssh \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -p "${{ secrets.TENCENT_PORT }}" \
+            "${{ secrets.TENCENT_USERNAME }}@${{ secrets.TENCENT_HOST }}" \
+            "chmod 755 /opt/goTest/app"
+
+      - name: Restart app on server
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.TENCENT_HOST }}
@@ -122,50 +154,12 @@ jobs:
           port: ${{ secrets.TENCENT_PORT }}
           script: |
             set -e
-
-            DEPLOY_DIR="/opt/goTest"
-            REPO_URL="https://github.com/NewBeeFly/goTest.git"
-            GO_BIN="$(command -v go)"
-
-            echo "=== Go toolchain ==="
-            if [ -z "$GO_BIN" ]; then
-              echo "::error::Go is not installed on this server (command -v go returned nothing)"
-              exit 1
-            fi
-            "$GO_BIN" version
-
-            echo "=== Prepare directory ==="
-            if [ ! -d "$DEPLOY_DIR/.git" ]; then
-              sudo mkdir -p "$DEPLOY_DIR"
-              sudo chown "$USER:$USER" "$DEPLOY_DIR"
-              git clone "$REPO_URL" "$DEPLOY_DIR"
-            fi
-
-            cd "$DEPLOY_DIR"
-            git checkout main
-            git pull origin main
-
-            echo "=== Build ==="
-            "$GO_BIN" build -o app .
-
-            echo "=== Restart ==="
-            pkill -f "$DEPLOY_DIR/app" 2>/dev/null || true
+            cd /opt/goTest
+            pkill -f "/opt/goTest/app" 2>/dev/null || true
             sleep 1
-            nohup "$DEPLOY_DIR/app" > app.log 2>&1 &
+            nohup /opt/goTest/app > app.log 2>&1 &
             disown $!
-            sleep 3
-
-            echo "=== Status ==="
-            ps aux | grep "$DEPLOY_DIR/app" | grep -v grep || echo "(process not listed yet — checking log)"
-            echo "=== Last 20 log lines ==="
+            sleep 2
+            ps aux | grep "/opt/goTest/app" | grep -v grep || echo "(process not listed yet — checking log)"
             tail -20 app.log 2>/dev/null || echo "(log not yet available)"
-
-            echo "=== Health check ==="
-            for i in 1 2 3 4 5; do
-              if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
-                echo "Health check passed on attempt $i"
-                break
-              fi
-              echo "Health check attempt $i failed, retrying in 2s..."
-              sleep 2
-            done
+            curl -sf http://localhost:8080/health || echo "Health check failed"
