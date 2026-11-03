@@ -97,9 +97,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Secrets are not injected as environment variables automatically — they
-      # only live in the `secrets` context, so map them explicitly to read them
-      # from a shell script. Without this the check below can never pass.
       - name: Validate required secrets
         env:
           TENCENT_HOST: ${{ secrets.TENCENT_HOST }}
@@ -110,7 +107,7 @@ jobs:
           missing=0
           for name in TENCENT_HOST TENCENT_USERNAME TENCENT_PASSWORD TENCENT_PORT; do
             if [ -z "${!name}" ]; then
-              echo "::error::$name is unset or empty — add it in Settings → Secrets and variables → Actions"
+              echo "::error::$name is unset or empty"
               missing=1
             fi
           done
@@ -124,7 +121,40 @@ jobs:
           password: ${{ secrets.TENCENT_PASSWORD }}
           port: ${{ secrets.TENCENT_PORT }}
           script: |
-            cd /opt/goTest
-            docker compose pull
-            docker compose up -d --force-recreate
-            docker image prune -f
+            set -e
+
+            DEPLOY_DIR="/opt/goTest"
+            REPO_URL="https://github.com/NewBeeFly/goTest.git"
+            GO_BIN="$(command -v go)"
+
+            echo "=== Go toolchain ==="
+            if [ -z "$GO_BIN" ]; then
+              echo "::error::Go is not installed on this server (command -v go returned nothing)"
+              exit 1
+            fi
+            "$GO_BIN" version
+
+            echo "=== Prepare directory ==="
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              sudo mkdir -p "$DEPLOY_DIR"
+              sudo chown "$USER:$USER" "$DEPLOY_DIR"
+              git clone "$REPO_URL" "$DEPLOY_DIR"
+            fi
+
+            cd "$DEPLOY_DIR"
+            git checkout main
+            git pull origin main
+
+            echo "=== Build ==="
+            "$GO_BIN" build -o app .
+
+            echo "=== Restart ==="
+            pkill -f "$DEPLOY_DIR/app" 2>/dev/null || true
+            sleep 1
+            nohup "$DEPLOY_DIR/app" > app.log 2>&1 &
+            disown $!
+            sleep 2
+            echo "=== Status ==="
+            ps aux | grep "$DEPLOY_DIR/app" | grep -v grep
+            echo "=== Last 20 log lines ==="
+            tail -20 app.log
